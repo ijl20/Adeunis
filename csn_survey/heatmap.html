@@ -1,0 +1,614 @@
+<html>
+  <head>
+    <title>CSN Survey</title>
+<!--
+This page imports (includes) network 'signal strength' data values (lat, lng, rssi) and displays them in
+a 'heatmap' map presentation.
+
+The basic technique is to define a regular grid over the area of interest, and average the signal
+strength readings for each grid point, and then use leaflet-heatmap.js to render those grid points as
+a color-coded heatmap (https://www.patrick-wied.at/static/heatmapjs/plugin-leaflet-layer.html)
+
+Note that the leaflet-heatmap.js (and heatmap.js beneath that) are primarily designed to create a 
+heatmap display from the *density* of the collected data points, rather than some property value at each
+data point, hence the initial transformation of the network survey 'scatter plot' data into a regular
+grid.
+
+-->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css"
+       integrity="sha512-07I2e+7D8p6he1SIM+1twR5TIrhUQn9+I6yjqD53JQjFiMf8EtC93ty0/5vJTZGF8aAocvHYNEDJajGdNx1IsQ=="
+       crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"
+       integrity="sha512-A7vV8IFfih/D732iSSKi20u/ooOfj/AGehOKq0f4vLT1Zr2Y+RX7C+w8A1gaSasGtRUZpF/NZgzSAu4/Gc41Lg=="
+       crossorigin=""></script>
+
+    <script src="heatmap.min.js"></script>
+    <script src="leaflet-heatmap.js"></script>
+    
+    <script>
+
+      // vars to hold data from data files 
+      var survey_data = new Array();
+      var gateway_data = new Array();
+
+    </script>
+
+    <script src="gateway_data.js"></script>
+    
+<!--    <script src="survey_2017-05-14.js"></script> -->
+    <script src="survey_data_2017-05-10_to_14.js"></script>
+    <script src="survey_data_dev_addr.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-15.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-16.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-17.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-18.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-19.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-20.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-21.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-22.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-23.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-24.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-25.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-26.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-28.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-30.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-31.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-01.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-02.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-04.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-05.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-06.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-07.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-08.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-14.js"></script>
+    <script src="csn_data/test/0018b2000000113e/0018b2000000113e_2017-06-15.js"></script>
+
+<style>
+body {
+   font-family: sans-serif;
+}
+
+#heading_text {
+   font-weight: bold;
+   display: inline-block;
+}
+
+#heading_info
+{
+   display: inline-block;
+   font-size: small;
+}
+
+#map {
+  height: 95vh;
+}
+
+</style>
+
+<script>
+
+var heading_info_el;
+var map;
+var heatmap_layer;
+
+// grid parameters
+var grid_cfg = {
+    lat_min: 99, // vars used to accumulate lat/lng boundaries of data
+    lat_max: -99,
+    lng_min: 99,
+    lng_max: -99,
+    lat_step: 0.01, // grid vertical step value in degrees latitude
+    lng_step: 0.01, // grid horizontal step value in degrees longitude
+    lat_south: 52.03, // bottom edge of grid
+    lat_count: 30,  // number of vertical grid points
+    lng_west: -0.1, // left edge of grid
+    lng_count: 40   // number of horizontal grid points
+}
+
+var grid; // array to hold grid signal VALUES (rssi dB typically -100 .. -120)
+var grid_count; // array to hold count of data values at each grid point
+
+var heatmap_cfg = {
+    // radius should be small ONLY if scaleRadius is true (or small radius is intended)
+    // if scaleRadius is false it will be the constant radius used in pixels
+    radius: .01,
+    maxOpacity: .6,
+    minOpacity: .2,
+    // scales the radius based on map zoom
+    scaleRadius: true,
+    // if set to false the heatmap uses the global maximum for colorization
+    // if activated: uses the data maximum within the current map boundaries
+    //   (there will always be a red spot with useLocalExtremas true)
+    useLocalExtrema: false,
+    // which field name in your data represents the latitude - default "lat"
+    latField: 'lat',
+    // which field name in your data represents the longitude - default "lng"
+    lngField: 'lng',
+    // which field name in your data represents the data value - default "value"
+    valueField: 'measure',
+    // 0..1 blur grid points
+    blur: 0.7,
+    // keys between 0 and 1 for gradient color customization
+    gradient: {
+        '.0': '#ff0000', // red
+        '.1': '#ff0000', // red
+        '.35': '#0000ff', // blue
+        '.6': '#ffff00', // yellow
+        '.9': '#00ff00', // green
+    }
+};
+    
+var map_cfg = { center: new L.LatLng(52.1738, 0.1207),
+                zoom: 11
+              };
+              
+// heatmap values
+
+var heatmap_data;
+
+function init()
+{
+    console.log('gw len',gateway_data.length);
+    
+    heading_info_el = document.getElementById('heading_info');
+
+    var ts_from = get_qs('ts_from');
+    var ts_to = get_qs('ts_to');
+    // if we have a date_from, then set ts_from as timestamp at START of that day
+    var date_from = get_qs('date_from');
+    if (date_from) // e.g. 2017-05-22
+    {
+        ts_from = (new Date(date_from).getTime())/1000;
+    }
+    // if we have a date_to, then set ts_to as timestamp at END of that day
+    var date_to = get_qs('date_to');
+    if (date_to) // e.g. 2017-05-22
+    {
+        ts_to = (new Date(date_to).getTime())/1000 + 24*60*60; // date_to timestamp is END of day
+    }
+    console.log('ts_from,to=',ts_from,ts_to);
+
+    init_map();
+
+    //console.log(survey_data[0]);
+
+    draw_gateway_data(gateway_data);
+
+    grid = new Array(grid_cfg.lat_count);
+    grid_count = new Array(grid_cfg.lat_count);
+    for (var i=0; i<grid_cfg.lat_count; i++)
+    {
+        grid[i] = new Array(grid_cfg.lng_count);
+        grid_count[i] = new Array(grid_cfg.lng_count);
+        for (var j=0; j<grid_cfg.lng_count; j++)
+        {
+            grid_count[i][j] = 0;
+        }
+    }
+
+    heatmap_data = { max: 1, data : new Array() };
+    
+    scan_survey_data(survey_data, ts_from, ts_to);
+
+    if (get_qs('interpolate')!='false')
+    {
+        interpolate_grid();
+    }
+    
+    build_heatmap_data();
+    
+    heatmap_layer.setData(heatmap_data);
+
+    //draw_contour();
+}
+
+function init_map()
+{
+    var base_layer = L.tileLayer(
+                'http://{s}.tile.osm.org/{z}/{x}/{y}.png',
+                {
+                    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+                }
+        );
+
+    heatmap_layer = new HeatmapOverlay(heatmap_cfg);
+
+    map = new L.Map( 'map',
+                     {
+                      center: map_cfg.center,
+                      zoom: map_cfg.zoom,
+                      layers: [base_layer, heatmap_layer]
+                     });
+}
+
+function draw_gateway_data(gateway_data)
+{
+    for (var i=0; i<gateway_data.length; i++)
+    {
+        console.log('gw',gateway_data[i].name);
+        
+        //console.log('row',i,'has lat:',row_data.lat);
+        var circle = L.circle([gateway_data[i].lat, gateway_data[i].lng], {
+                color: 'black',
+                fillColor: 'gray',
+                fillOpacity: 0.5,
+                radius: 400,
+                weight: 2
+            }).addTo(map);
+        circle.on('click', (function (gateway) {
+                                    return function (e) {
+                                        heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[i]));
+    }
+}
+
+// Iterate every survey data point, draw points, and accumulate contour / heatmap values
+    
+function scan_survey_data(survey_data, ts_from, ts_to)
+{
+
+    for (var i=0; i< survey_data.length; i++)
+    {
+        var row_string = survey_data[i].replace(/[^\x20-\x7E]+/g, '').replace(/,\"/g,', "');
+        //console.log('Record',i,row_string);
+        var survey_data_row = JSON.parse(row_string);
+        // skip records older than ts_from or newer than ts_to
+        if (ts_from && survey_data_row.ts < ts_from)
+        {
+            continue;
+        }
+        if (ts_to && survey_data_row.ts > ts_to)
+        {
+            continue;
+        }
+        base64_string = survey_data_row.request_data[0].params.payload;
+        //console.log(base64_string);
+        var hex_string = base64toHEX(base64_string);
+        //console.log(hex_string);
+        var row_data = parse_row(hex_string);
+        //console.log(hex_string,'row_data',row_data);
+        if (row_data.hasOwnProperty('lat'))
+        {
+            var lat = row_data.lat;
+            var lng = row_data.lng;
+            var measure = survey_data_row.request_data[0].params.radio.rssi;
+
+            // debug accumulate max and min lat/long values
+
+            if (lat < grid_cfg.lat_min) grid_cfg.lat_min = lat;
+            if (lat > grid_cfg.lat_max) grid_cfg.lat_max = lat;
+            if (lng < grid_cfg.lng_min) grid_cfg.lng_min = lng;
+            if (lng > grid_cfg.lng_max) grid_cfg.lng_max = lng;
+                
+            // calculate grid array element relevant for this reading
+            
+            var lat_index = Math.floor((lat-grid_cfg.lat_south)/grid_cfg.lat_step);
+            var lng_index = Math.floor((lng-grid_cfg.lng_west)/grid_cfg.lng_step);
+
+            // if the current lat/lng is within the area we chose for the grid
+            // then update the grid point with this data
+            if (lat_index >= 0 && lng_index >= 0 && lat_index < grid_cfg.lat_count && lng_index < grid_cfg.lng_count )
+            {
+                grid_count[lat_index][lng_index]++;
+
+                var count = grid_count[lat_index][lng_index];
+                
+                if (count==1)
+                {
+                    grid[lat_index][lng_index] = measure;
+                }
+                else
+                {
+                    var avg = grid[lat_index][lng_index];
+                    grid[lat_index][lng_index] = ((count - 1) * avg + measure ) / count;
+                }
+            }
+
+            // Draw this data point on the map
+
+            /*
+            //console.log('row',i,'has lat:',row_data.lat);
+            var circle = L.circle([lat, lng], {
+                    color: 'blue',
+                    fillColor: '#0f3',
+                    fillOpacity: 0.5,
+                    radius: 100,
+                    weight: 2
+                }).addTo(map);
+
+            // add an 'on click' to display the data point json at top of page when this point clicked on
+            
+            circle.on('click', (function (row_string) {
+                                    return function (e) {
+                                        heading_info_el.innerHTML = row_string; };})(row_string));
+            */
+        }
+    }
+    console.log(grid_cfg.lat_min, grid_cfg.lat_max, grid_cfg.lng_min, grid_cfg.lng_max);
+}
+
+// Iterate the grid and build heatmap_data list of values
+
+function build_heatmap_data()
+{
+    for (var i=grid_cfg.lat_count-1; i>=0; i--)
+    {
+        for (var j=0; j<grid_cfg.lng_count; j++)
+        {
+            if (typeof grid[i][j] != 'undefined')
+            {
+                var lat = grid_cfg.lat_south + i * grid_cfg.lat_step + (grid_cfg.lat_step / 2);
+                var lng = grid_cfg.lng_west + j * grid_cfg.lng_step + (grid_cfg.lng_step / 2);
+
+                heatmap_data.data.push({lat: lat, lng: lng, measure: measure(i,j)});
+            }
+        }
+    }
+}
+
+// fill in some of the blanks in the grid by averaging neighbors
+function interpolate_grid()
+{
+    var interpolated_cells = new Array();
+    
+    for (var i=1; i<grid_cfg.lat_count-1; i++)
+    {
+        for (var j=1; j<grid_cfg.lng_count-1; j++)
+        {
+            if (grid_count[i][j]==0)
+            {
+                var new_cell = interpolate_cell(i,j);
+                if (new_cell.rssi)
+                {
+                    interpolated_cells.push(new_cell);
+                }
+            }
+        }
+    }
+
+    console.log('interpolated_cells',interpolated_cells.length);
+    
+    // add the interpolated cells to the grid
+    for (var i=0; i<interpolated_cells.length; i++)
+    {
+        var cell = interpolated_cells[i];
+        grid[cell.i][cell.j] = cell.rssi;
+        grid_count[cell.i][cell.j] = 1;
+    }
+}
+
+// For a given cell at [i,j], store the average of the
+// surrounding cells.
+function interpolate_cell(i,j)
+{
+    var rssi_sum = 0;
+    var rssi_count = 0;
+    
+    for (var i_offset=-1; i_offset<=1; i_offset++)
+    {
+        for (var j_offset=-1; j_offset<=1; j_offset++)
+        {
+            // only interpolate from neighboring cells if they contain
+            // more than 1 data point (this reduces noise in heatmap).
+            if (grid_count[i+i_offset][j+j_offset] > 1)
+            {
+                // we accumulate SUM and COUNT to later calculate MEAN
+                rssi_sum += grid[i+i_offset][j+j_offset];
+                rssi_count++;
+            }
+        }
+    }
+    if (rssi_count == 0)
+    {
+        return { i: i, j: j, rssi: 0 };
+    }    
+    return { i: i, j: j, rssi: rssi_sum / rssi_count };
+}
+
+// Given a grid cell at [i,j], return the scalar measure
+// relevant to that cell.
+function measure(i,j)
+{
+    var rssi = grid[i][j];
+    var m = (rssi + 120) / 25;
+    if (m < 0.1) m = 0.1;
+    if (m > 1) m = 1;
+    return m;
+}
+
+// Here we draw color-coded circles at each grid point
+function draw_contour()
+{
+    for (var i=grid_cfg.lat_count-1; i>=0; i--)
+    {
+        var count_line = '';
+        for (var j=0; j<grid_cfg.lng_count; j++)
+        {
+            count_line += grid_count[i][j]+',';
+
+            // calculate lat/lng of grid[i][j] position
+
+            if (grid_count[i][j])
+            {
+                var lat = grid_cfg.lat_south + i * grid_cfg.lat_step + (grid_cfg.lat_step / 2);
+                var lng = grid_cfg.lng_west + j * grid_cfg.lng_step + (grid_cfg.lng_step / 2);
+                var color = grid_color(i,j);
+
+                // draw appropriately colored circle at this grid position
+
+                var circle = L.circle([lat, lng], {
+                        color: color,
+                        opacity: 0.5,
+                        fillColor: color,
+                        fillOpacity: 0.5,
+                        radius: 400,
+                        weight: 2
+                    }).addTo(map);
+
+                // add 'on click' for this circle to diplay grid value at top of page
+
+                circle.on('click', (function (str) {
+                                        return function (e) {
+                                            heading_info_el.innerHTML = str; };})(''+grid_count[i][j]));
+            }
+        }
+        console.log(count_line);
+    }
+            
+    for (var i=grid_cfg.lat_count-1; i>=0; i--)
+    {
+        var line = '';
+        for (var j=0; j<grid_cfg.lng_count; j++)
+        {
+            if (typeof grid[i][j] != 'undefined') line += Math.floor(grid[i][j])+',';
+            else line += '-,';
+        }
+        console.log(line);
+    }
+            
+}
+
+function grid_color(i,j)
+{
+    if (typeof grid[i][j] == 'undefined') return 'gray';
+    var rssi = grid[i][j];
+    
+    if (rssi > -110) return 'green';
+    if (rssi > -115) return 'yellow';
+    if (rssi > -120) return 'red';
+    return 'red';
+}
+
+function parse_row(hex_string)
+{
+    var row_data = {};
+    
+    //console.log(hex_string);
+    if (hex_string.length < 10)
+    {
+        console.log('skip too short');
+        return {};
+    }
+
+    var nibble_0 = hex_to_bits(hex_string.charAt(0));
+
+    //console.log(nibble_0);
+    
+    if (!nibble_0[0])
+    {
+        console.log('skip no latlong');
+        return {};
+    }
+    
+    //console.log('ok');
+
+    var lat_deg='';
+    lat_deg += hex_string.charAt(4); // deg10
+    lat_deg += hex_string.charAt(5);
+    //console.log('lat_deg',lat_deg);
+
+    var lat_min='';
+    lat_min += hex_string.charAt(6);
+    lat_min += hex_string.charAt(7);
+    //console.log('lat_min',lat_min);
+
+    var lat_min_dec='';
+    lat_min_dec += hex_string.charAt(8);
+    lat_min_dec += hex_string.charAt(9);
+    lat_min_dec += hex_string.charAt(10);
+    //console.log('lat_min_dec',lat_min_dec);
+
+    var nibble_11 = hex_to_bits(hex_string.charAt(11));
+    var lat_NS='N';
+    if (nibble_11[0]) lat_NS='S';
+    //console.log('lat_NS',lat_NS);
+
+    row_data.lat = parseInt(lat_deg)+(parseFloat(lat_min+'.'+lat_min_dec)/60);
+
+    if (lat_NS=='S') row_data.lat = -row_data.lat;
+    
+    var lng_deg='';
+    lng_deg += hex_string.charAt(12); // deg10
+    lng_deg += hex_string.charAt(13);
+    lng_deg += hex_string.charAt(14);
+    //console.log('lng_deg',lng_deg);
+
+    var lng_min='';
+    lng_min += hex_string.charAt(15);
+    lng_min += hex_string.charAt(16);
+    //console.log('lng_min',lng_min);
+
+    var lng_min_dec='';
+    lng_min_dec += hex_string.charAt(17);
+    lng_min_dec += hex_string.charAt(18);
+    //console.log('lng_min_dec',lng_min_dec);
+
+    var nibble_11 = hex_to_bits(hex_string.charAt(19));
+    var lng_EW='E';
+    if (nibble_11[0]) lng_EW='W';
+    //console.log('lng_EW',lng_EW);
+
+    row_data.lng = parseInt(lng_deg)+(parseFloat(lng_min+'.'+lng_min_dec)/60);
+
+    if (lng_EW=='W') row_data.lng = -row_data.lng;
+
+    return row_data;
+}
+
+function base64toHEX(base64)
+{
+    var raw = atob(base64);
+    var HEX = '';
+    for ( i = 0; i < raw.length; i++ )
+    {
+        var _hex = raw.charCodeAt(i).toString(16)
+        HEX += (_hex.length==2?_hex:'0'+_hex);
+    }
+    return HEX.toUpperCase();
+}
+
+function hex_to_bits(hex_char)
+{
+    //console.log('hex_to_bits',hex_char);
+    
+    if (hex_char=='0') return [false,false,false,false];
+    if (hex_char=='1') return [true ,false,false,false];
+    if (hex_char=='2') return [false,true ,false,false];
+    if (hex_char=='3') return [true ,true ,false,false];
+    if (hex_char=='4') return [false,false,true ,false];
+    if (hex_char=='5') return [true ,false,true ,false];
+    if (hex_char=='6') return [false,true ,true ,false];
+    if (hex_char=='7') return [true ,true ,true ,false];
+    if (hex_char=='8') return [false,false,false,true];
+    if (hex_char=='9') return [true ,false,false,true];
+    if (hex_char=='A') return [false,true ,false,true];
+    if (hex_char=='B') return [true ,true ,false,true];
+    if (hex_char=='C') return [false,false,true ,true];
+    if (hex_char=='D') return [true ,false,true ,true];
+    if (hex_char=='E') return [false,true ,true ,true];
+    if (hex_char=='F') return [true ,true ,true ,true];
+    console.log('hex_to_bits error non hex char');
+    return [];
+}
+
+function get_qs(name)
+{
+        var url = window.location.href;
+        name = name.replace(/[\[\]]/g, "\\$&");
+        var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+                    results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
+
+</script>
+  </head>
+<body onload='init()'>
+  <div id='heading_block'>
+    <div id='heading_text'>CSN Survey</div>
+    <div id='heading_info'>Click on any point to see data</div>
+  </div><!-- end heading_block -->
+<div id="map"></div>
+<!--<div class="button"><button onclick="toggle_interp()">Interp</button></div> -->
+</body>
+</html>
