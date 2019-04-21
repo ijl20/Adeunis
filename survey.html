@@ -127,6 +127,8 @@ function draw_gateway_data(gateway_data)
                         iconAnchor: [20,40]
     });
 
+    var left_div = document.getElementById('left');
+
     //for (var i=0; i<gateway_data.length; i++)
     for (var gtw_id in gateway_data)
     {
@@ -146,7 +148,16 @@ function draw_gateway_data(gateway_data)
                                     return function (e) {
                                         heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id]));
                                         */
-        L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], {icon: icon}).addTo(map);
+        var marker = L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], {icon: icon}).addTo(map);
+        marker.on('click', (function (gateway) {
+                                    return function (e) {
+                                        heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id])
+        );
+
+        var gw_div = document.createElement('div');
+        var gw_txt = document.createTextNode(gtw_id);
+        gw_div.appendChild(gw_txt);
+        left_div.appendChild(gw_div);
     }
 }
 
@@ -156,7 +167,7 @@ function draw_survey_data(survey_data, ts_from, ts_to)
 
     for (var file=0; file < survey_data.length; file++)
     {
-        //console.log('draw_survey_data','file',file);
+        console.log('draw_survey_data','file',file, survey_data[file].length);
 
         var file_data = survey_data[file];
 
@@ -178,7 +189,8 @@ function draw_survey_data(survey_data, ts_from, ts_to)
 
             var file_data_row = file_data[i];
 
-            var row_string = JSON.stringify(file_data_row);
+            var row_string = JSON.stringify(file_data_row).replace(/[^\x20-\x7E]+/g, '').replace(/,\"/g,', "');
+;
 
             //console.log('draw_survey_data file',file,'row',i,file_data_row);
 
@@ -189,12 +201,23 @@ function draw_survey_data(survey_data, ts_from, ts_to)
             //console.log(hex_string,'row_data',row_data);
             if (row_data.hasOwnProperty('lat'))
             {
-                //console.log('row',i,'has lat:',row_data.lat);
-                var circle = L.circle([row_data.lat, row_data.lng], {
-                        color: 'blue',
-                        fillColor: '#0f3',
+                var rssi = -1000; // signal strength, will update with best gateway value
+                var gateways = file_data_row.metadata.gateways;
+                for (var gw=0; gw<gateways.length; gw++)
+                {
+                    var gw_rssi = gateways[gw].rssi;
+                    if (gw_rssi > rssi)
+                    {
+                        rssi = gw_rssi;
+                    }
+                }
+                var color = rssi > -100 ? 'green'  : (rssi > -105 ? 'yellow' : 'red');
+                //console.log('row',i,'has rssi:',rssi, color, gateways);
+                var circle = L.circleMarker([row_data.lat, row_data.lng], {
+                        color: color,
+                        fillColor: color,
                         fillOpacity: 0.5,
-                        radius: 10,
+                        radius: 5,
                         weight: 2
                     }).addTo(map);
                 circle.on('click', (function (row_string) {
@@ -342,10 +365,13 @@ function get_qs(name)
 </script>
   </head>
 <body onload='init()'>
-  <div id='heading_block'>
+  <div id="heading_block">
     <div id='heading_text'>CSN Survey</div>
     <div id='heading_info'>Click on any point to see data</div>
   </div><!-- end heading_block -->
-<div id="map"></div>
+<div style="display: grid; grid-template-columns: 1fr 6fr;">
+    <div id="left"><h4>Gateways</h4></div>
+  <div id="map"></div>
+</div>
 </body>
 </html>
