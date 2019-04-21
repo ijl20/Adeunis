@@ -8,6 +8,8 @@
        integrity="sha512-A7vV8IFfih/D732iSSKi20u/ooOfj/AGehOKq0f4vLT1Zr2Y+RX7C+w8A1gaSasGtRUZpF/NZgzSAu4/Gc41Lg=="
        crossorigin=""></script>
 
+    <script src="https://smartcambridge.org/static_web/js/geo.js"></script>
+
     <script>
       var survey_data = new Array();
       var gateway_data = new Array();
@@ -71,7 +73,10 @@ function init()
 
     //console.log(survey_data[0]);
 
-    draw_gateway_data(gateway_data);
+    var gateways = {};
+    gateways = collect_gateways(survey_data);
+
+    draw_gateway_data(gateways);
 
     draw_survey_data(survey_data, ts_from, ts_to);    
 }
@@ -84,12 +89,53 @@ function init_map()
     }).addTo(map);
 }
 
+function collect_gateways(survey_data)
+{
+    var gateway_data = {};
+
+    for (var file=0; file<survey_data.length; file++)
+    {
+        var file_data = survey_data[file];
+        console.log('collect_gateways',file);
+
+        for (var i=0; i<file_data.length; i++)
+        {
+            var gateways = file_data[i].metadata.gateways;
+            if (gateways)
+            {
+                for (var j=0; j<gateways.length; j++)
+                {
+                    var gtw_id = gateways[j].gtw_id;
+                    if (gateways[j].latitude && !gateway_data.hasOwnProperty(gtw_id))
+                    {
+                        gateway_data[gtw_id] = gateways[j];
+                        gateway_data[gtw_id].lat = gateways[j].latitude;
+                        gateway_data[gtw_id].lng = gateways[j].longitude;
+                    }
+                }
+            }
+        }
+    }
+    console.log(gateway_data);
+    return gateway_data;
+}
+
 function draw_gateway_data(gateway_data)
 {
-    for (var i=0; i<gateway_data.length; i++)
+    var icon = L.icon({ iconUrl: 'gateway.svg', 
+                        iconSize:[40,40],
+                        iconAnchor: [20,40]
+    });
+
+    //for (var i=0; i<gateway_data.length; i++)
+    for (var gtw_id in gateway_data)
     {
+        if (!gateway_data.hasOwnProperty(gtw_id)) continue;
+
+        console.log('gateway',gateway_data[gtw_id]);
         //console.log('row',i,'has lat:',row_data.lat);
-        var circle = L.circle([gateway_data[i].lat, gateway_data[i].lng], {
+        /*
+        var circle = L.circle([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], {
                 color: 'red',
                 fillColor: 'lightred',
                 fillOpacity: 0.5,
@@ -98,17 +144,19 @@ function draw_gateway_data(gateway_data)
             }).addTo(map);
         circle.on('click', (function (gateway) {
                                     return function (e) {
-                                        heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[i]));
+                                        heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id]));
+                                        */
+        L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], {icon: icon}).addTo(map);
     }
 }
 
 function draw_survey_data(survey_data, ts_from, ts_to)
 {
-    console.log('draw_survey_data', 'survey_data.length',survey_data.length);
+    //console.log('draw_survey_data', 'survey_data.length',survey_data.length);
 
     for (var file=0; file < survey_data.length; file++)
     {
-        console.log('draw_survey_data','file',file);
+        //console.log('draw_survey_data','file',file);
 
         var file_data = survey_data[file];
 
@@ -132,7 +180,7 @@ function draw_survey_data(survey_data, ts_from, ts_to)
 
             var row_string = JSON.stringify(file_data_row);
 
-            console.log('draw_survey_data file',file,'row',i,file_data_row);
+            //console.log('draw_survey_data file',file,'row',i,file_data_row);
 
             var hex_string = row_hex(file_data_row);
 
