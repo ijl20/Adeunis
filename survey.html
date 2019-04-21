@@ -84,6 +84,16 @@ function init()
 function init_map()
 {
     map = L.map('map').setView([52.1738, 0.1207], 11);
+    // z-index panes for data points
+    map.createPane('data-weak');
+    map.createPane('data-medium');
+    map.createPane('data-strong');
+    map.createPane('gateways');
+    map.getPane('data-weak').style.zIndex = 600;
+    map.getPane('data-medium').style.zIndex = 601;
+    map.getPane('data-strong').style.zIndex = 602;
+    map.getPane('gateways').style.zIndex = 610;
+
     L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
@@ -148,7 +158,9 @@ function draw_gateway_data(gateway_data)
                                     return function (e) {
                                         heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id]));
                                         */
-        var marker = L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], {icon: icon}).addTo(map);
+        var marker = L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], 
+                                {icon: icon,
+                                 pane: 'gateways'}).addTo(map);
         marker.on('click', (function (gateway) {
                                     return function (e) {
                                         heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id])
@@ -211,14 +223,16 @@ function draw_survey_data(survey_data, ts_from, ts_to)
                         rssi = gw_rssi;
                     }
                 }
-                var color = rssi > -100 ? 'green'  : (rssi > -105 ? 'yellow' : 'red');
+                var strength = rssi > -100 ? 'strong'  : (rssi > -105 ? 'medium' : 'weak');
+                var color = strength == 'strong' ? 'green'  : (strength == 'medium' ? 'yellow' : 'red');
                 //console.log('row',i,'has rssi:',rssi, color, gateways);
                 var circle = L.circleMarker([row_data.lat, row_data.lng], {
                         color: color,
                         fillColor: color,
                         fillOpacity: 0.5,
                         radius: 5,
-                        weight: 2
+                        weight: 2,
+                        pane: 'data-'+strength
                     }).addTo(map);
                 circle.on('click', (function (row_string) {
                                         return function (e) {
