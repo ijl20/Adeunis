@@ -12,10 +12,8 @@
 
     <script>
       var survey_data = new Array();
-      var gateway_data = new Array();
+      var gateway_data = {};
     </script>
-
-    <script src="gateway_data.js"></script>
 
     <!-- <script src="csn_survey/csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-25.js"></script> -->
 
@@ -40,6 +38,13 @@ body {
 
 #map {
   height: 95vh;
+}
+
+.gateway_button {
+    border-style: outset;
+    background-color: white;
+    font-size: 0.8em;
+    cursor: pointer;
 }
 
 </style>
@@ -73,10 +78,9 @@ function init()
 
     //console.log(survey_data[0]);
 
-    var gateways = {};
-    gateways = collect_gateways(survey_data);
+    collect_gateways(survey_data);
 
-    draw_gateway_data(gateways);
+    draw_gateway_data();
 
     draw_survey_data(survey_data, ts_from, ts_to);    
 }
@@ -97,16 +101,18 @@ function init_map()
     L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
+
+    // set 'all_gateways_button' to 'selected'.
+    document.getElementById('all_gateways_button').style['background-color'] = 'rgb(222, 249, 204)';
 }
 
 function collect_gateways(survey_data)
 {
-    var gateway_data = {};
+    gateway_data = {};
 
     for (var file=0; file<survey_data.length; file++)
     {
         var file_data = survey_data[file];
-        console.log('collect_gateways',file);
 
         for (var i=0; i<file_data.length; i++)
         {
@@ -121,16 +127,15 @@ function collect_gateways(survey_data)
                         gateway_data[gtw_id] = gateways[j];
                         gateway_data[gtw_id].lat = gateways[j].latitude;
                         gateway_data[gtw_id].lng = gateways[j].longitude;
+                        gateway_data[gtw_id].selected = false;
                     }
                 }
             }
         }
     }
-    console.log(gateway_data);
-    return gateway_data;
 }
 
-function draw_gateway_data(gateway_data)
+function draw_gateway_data()
 {
     var icon = L.icon({ iconUrl: 'gateway.svg', 
                         iconSize:[40,40],
@@ -145,19 +150,6 @@ function draw_gateway_data(gateway_data)
         if (!gateway_data.hasOwnProperty(gtw_id)) continue;
 
         console.log('gateway',gateway_data[gtw_id]);
-        //console.log('row',i,'has lat:',row_data.lat);
-        /*
-        var circle = L.circle([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], {
-                color: 'red',
-                fillColor: 'lightred',
-                fillOpacity: 0.5,
-                radius: 20,
-                weight: 2
-            }).addTo(map);
-        circle.on('click', (function (gateway) {
-                                    return function (e) {
-                                        heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id]));
-                                        */
         var marker = L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], 
                                 {icon: icon,
                                  pane: 'gateways'}).addTo(map);
@@ -167,9 +159,38 @@ function draw_gateway_data(gateway_data)
         );
 
         var gw_div = document.createElement('div');
+        gw_div.id = 'gateway_button_'+gtw_id;
+        gw_div.className = 'gateway_button';
+        gw_div.setAttribute('data-gtw_id',gtw_id);
+        gw_div.addEventListener('click', function (evt) {
+            document.getElementById('all_gateways_button').style['background-color'] = 'white';
+            var gtw_id = evt.target.getAttribute('data-gtw_id');
+            if (gateway_data[gtw_id].selected)
+            {
+                evt.target.style['background-color'] = 'white';
+                gateway_data[gtw_id].selected = false;
+            }
+            else
+            {
+                evt.target.style['background-color'] = 'rgb(222, 249, 204)';
+                gateway_data[gtw_id].selected = true;
+            }
+        });
         var gw_txt = document.createTextNode(gtw_id);
         gw_div.appendChild(gw_txt);
         left_div.appendChild(gw_div);
+    }
+}
+
+function all_gateways()
+{
+    // set 'all_gateways_button' to 'selected'.
+    document.getElementById('all_gateways_button').style['background-color'] = 'rgb(222, 249, 204)';
+
+    for (var gtw_id in gateway_data)
+    {
+        gateway_data[gtw_id].selected = false;
+        document.getElementById('gateway_button_'+gtw_id).style['background-color'] = 'white';
     }
 }
 
@@ -202,9 +223,6 @@ function draw_survey_data(survey_data, ts_from, ts_to)
             var file_data_row = file_data[i];
 
             var row_string = JSON.stringify(file_data_row).replace(/[^\x20-\x7E]+/g, '').replace(/,\"/g,', "');
-;
-
-            //console.log('draw_survey_data file',file,'row',i,file_data_row);
 
             var hex_string = row_hex(file_data_row);
 
@@ -227,11 +245,10 @@ function draw_survey_data(survey_data, ts_from, ts_to)
                 var color = strength == 'strong' ? 'green'  : (strength == 'medium' ? 'yellow' : 'red');
                 //console.log('row',i,'has rssi:',rssi, color, gateways);
                 var circle = L.circleMarker([row_data.lat, row_data.lng], {
-                        color: color,
+                        stroke: false,
                         fillColor: color,
                         fillOpacity: 0.5,
-                        radius: 5,
-                        weight: 2,
+                        radius: 8,
                         pane: 'data-'+strength
                     }).addTo(map);
                 circle.on('click', (function (row_string) {
@@ -384,7 +401,11 @@ function get_qs(name)
     <div id='heading_info'>Click on any point to see data</div>
   </div><!-- end heading_block -->
 <div style="display: grid; grid-template-columns: 1fr 6fr;">
-    <div id="left"><h4>Gateways</h4></div>
+  <div id="left">
+      <h4>Gateways</h4>
+      <div id="all_gateways_button" class="gateway_button" onclick="all_gateways()">All gateways</div>
+      <hr/>
+  </div>
   <div id="map"></div>
 </div>
 </body>
