@@ -51,9 +51,15 @@ body {
 
 <script>
 
+// This script reads the Adeunis Field Test device LoraWAN data records and
+// parses the lat/long from the hex 'payload_raw' field.
+// Globals
 var heading_info_el;
 var map;
 
+// **************************************************************
+// ***********  init() called on page load **********************
+// **************************************************************
 function init()
 {
     heading_info_el = document.getElementById('heading_info');
@@ -82,20 +88,16 @@ function init()
 
     draw_gateway_data();
 
-    draw_survey_data(survey_data, ts_from, ts_to);    
+    draw_survey_data(survey_data, null, ts_from, ts_to);    
 }
 
+// Initialize the map, no data yet
 function init_map()
 {
     map = L.map('map').setView([52.1738, 0.1207], 11);
-    // z-index panes for data points
-    map.createPane('data-weak');
-    map.createPane('data-medium');
-    map.createPane('data-strong');
+    // z-index panes for data points and gateways
+    add_data_panes();
     map.createPane('gateways');
-    map.getPane('data-weak').style.zIndex = 600;
-    map.getPane('data-medium').style.zIndex = 601;
-    map.getPane('data-strong').style.zIndex = 602;
     map.getPane('gateways').style.zIndex = 610;
 
     L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
@@ -106,6 +108,26 @@ function init_map()
     document.getElementById('all_gateways_button').style['background-color'] = 'rgb(222, 249, 204)';
 }
 
+// Add Leaflet 'panes' to the map so we can remove easily and manage Z-order so greens on top.
+function add_data_panes()
+{
+    map.createPane('data-weak');
+    map.createPane('data-medium');
+    map.createPane('data-strong');
+    map.getPane('data-weak').style.zIndex = 600;
+    map.getPane('data-medium').style.zIndex = 601;
+    map.getPane('data-strong').style.zIndex = 602;
+}
+
+function remove_data_panes()
+{
+    map.getPane('data-strong').remove();
+    map.getPane('data-medium').remove();
+    map.getPane('data-weak').remove();
+}
+
+// Collect the 'gateway' references embedded in the survey_data
+// We will store the first 'gateway' JSON for each new gateway we discover
 function collect_gateways(survey_data)
 {
     gateway_data = {};
@@ -135,6 +157,7 @@ function collect_gateways(survey_data)
     }
 }
 
+// Draw a marker for each gateway on the map, also list gateways in left column.
 function draw_gateway_data()
 {
     var icon = L.icon({ iconUrl: 'gateway.svg', 
@@ -174,6 +197,9 @@ function draw_gateway_data()
             {
                 evt.target.style['background-color'] = 'rgb(222, 249, 204)';
                 gateway_data[gtw_id].selected = true;
+                remove_data_panes();
+                add_data_panes();
+                draw_survey_data(survey_data, gtw_id);
             }
         });
         var gw_txt = document.createTextNode(gtw_id);
@@ -182,6 +208,7 @@ function draw_gateway_data()
     }
 }
 
+// 'click' callback for 'All gateways' button
 function all_gateways()
 {
     // set 'all_gateways_button' to 'selected'.
@@ -194,7 +221,7 @@ function all_gateways()
     }
 }
 
-function draw_survey_data(survey_data, ts_from, ts_to)
+function draw_survey_data(survey_data, gateway_filter, ts_from, ts_to)
 {
     //console.log('draw_survey_data', 'survey_data.length',survey_data.length);
 
@@ -229,11 +256,25 @@ function draw_survey_data(survey_data, ts_from, ts_to)
             //console.log(hex_string);
             var row_data = parse_hex(hex_string);
             //console.log(hex_string,'row_data',row_data);
-            if (row_data.hasOwnProperty('lat'))
+
+            if (!row_data.hasOwnProperty('lat'))
             {
-                var rssi = -1000; // signal strength, will update with best gateway value
-                var gateways = file_data_row.metadata.gateways;
-                for (var gw=0; gw<gateways.length; gw++)
+                continue;
+            }
+
+            var rssi = -1000; // signal strength, will update with best gateway value
+            // Iterate gateways in this data record and find highest signal strength
+            var gateways = file_data_row.metadata.gateways;
+            for (var gw=0; gw<gateways.length; gw++)
+            {
+                if (gateway_filter)
+                {
+                    if (gateways[gw].gtw_id != gateway_filter) continue;
+                    rssi = gateways[gw].rssi;
+                    console.log('data matched',gateway_filter, rssi);
+                    break;
+                }
+                else
                 {
                     var gw_rssi = gateways[gw].rssi;
                     if (gw_rssi > rssi)
@@ -241,20 +282,24 @@ function draw_survey_data(survey_data, ts_from, ts_to)
                         rssi = gw_rssi;
                     }
                 }
-                var strength = rssi > -100 ? 'strong'  : (rssi > -105 ? 'medium' : 'weak');
-                var color = strength == 'strong' ? 'green'  : (strength == 'medium' ? 'yellow' : 'red');
-                //console.log('row',i,'has rssi:',rssi, color, gateways);
-                var circle = L.circleMarker([row_data.lat, row_data.lng], {
-                        stroke: false,
-                        fillColor: color,
-                        fillOpacity: 0.5,
-                        radius: 8,
-                        pane: 'data-'+strength
-                    }).addTo(map);
-                circle.on('click', (function (row_string) {
-                                        return function (e) {
-                                            heading_info_el.innerHTML = row_string; };})(row_string));
             }
+            if (rssi == -1000) continue;
+
+            var strength = rssi > -100 ? 'strong'  : (rssi > -105 ? 'medium' : 'weak');
+            var color = strength == 'strong' ? 'green'  : (strength == 'medium' ? 'yellow' : 'red');
+
+            console.log('row',i,'has rssi:',rssi, color, gateways);
+            var circle = L.circleMarker([row_data.lat, row_data.lng], {
+                    stroke: false,
+                    fillColor: color,
+                    fillOpacity: 0.5,
+                    radius: 8,
+                    pane: 'data-'+strength
+                }).addTo(map);
+            circle.on('click', (function (row_string) {
+                                    return function (e) {
+                                        heading_info_el.innerHTML = row_string; };})(row_string)
+            );
         }
     }
 
@@ -393,6 +438,11 @@ function get_qs(name)
         return decodeURIComponent(results[2].replace(/\+/g, " "));
 }
 
+function test_button()
+{
+    map.getPane('data-weak').remove();
+}
+
 </script>
   </head>
 <body onload='init()'>
@@ -403,6 +453,7 @@ function get_qs(name)
 <div style="display: grid; grid-template-columns: 1fr 6fr;">
   <div id="left">
       <h4>Gateways</h4>
+      <div id="test_button" class="gateway_button" onclick="test_button()">Test</div>
       <div id="all_gateways_button" class="gateway_button" onclick="all_gateways()">All gateways</div>
       <hr/>
   </div>
