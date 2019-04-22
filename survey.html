@@ -56,12 +56,15 @@ body {
 // Globals
 var heading_info_el;
 var map;
-
+var data_markers; // layerGroup holds data markers placed on map (so can be removed)
+var gateway_markers; // layerGroup for gateway markers
 // **************************************************************
 // ***********  init() called on page load **********************
 // **************************************************************
 function init()
 {
+    //data_markers = new Array();
+
     heading_info_el = document.getElementById('heading_info');
 
     var ts_from = get_qs('ts_from');
@@ -84,9 +87,11 @@ function init()
 
     //console.log(survey_data[0]);
 
+    // scan through data and collect unique gateways (from metadata.gateways array in each data record)
     collect_gateways(survey_data);
 
-    draw_gateway_data();
+    // create buttons and place all gateways on map (from gateway_data created above)
+    draw_gateways();
 
     draw_survey_data(survey_data, null, ts_from, ts_to);    
 }
@@ -119,11 +124,14 @@ function add_data_panes()
     map.getPane('data-strong').style.zIndex = 602;
 }
 
-function remove_data_panes()
+function remove_data_markers()
 {
-    map.getPane('data-strong').remove();
-    map.getPane('data-medium').remove();
-    map.getPane('data-weak').remove();
+    data_markers.clearLayers();
+}
+
+function remove_gateway_markers()
+{
+    gateway_markers.clearLayers();
 }
 
 // Collect the 'gateway' references embedded in the survey_data
@@ -157,14 +165,45 @@ function collect_gateways(survey_data)
     }
 }
 
-// Draw a marker for each gateway on the map, also list gateways in left column.
-function draw_gateway_data()
+// draw gateway on map, color green if selected
+function draw_gateway_marker(gateway_record, selected)
 {
-    var icon = L.icon({ iconUrl: 'gateway.svg', 
+
+    var icon = L.icon({ iconUrl: selected ? 'gateway_selected.svg' : 'gateway.svg',
                         iconSize:[40,40],
                         iconAnchor: [20,40]
     });
 
+    console.log('gateway',gateway_record);
+    var marker = L.marker([gateway_record.lat, gateway_record.lng], 
+                            {icon: icon,
+                             pane: 'gateways'
+    });
+    marker.on('click', (function (gateway) {
+                                return function (e) {
+                                    heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_record)
+    );
+
+    gateway_markers.addLayer(marker);
+}
+
+function draw_gateway_markers()
+{
+    gateway_markers = L.layerGroup();
+
+    for (var gtw_id in gateway_data)
+    {
+        if (!gateway_data.hasOwnProperty(gtw_id)) continue;
+
+        draw_gateway_marker(gateway_data[gtw_id]);
+    }
+
+    gateway_markers.addTo(map);
+}
+
+// Draw a marker for each gateway on the map, also list gateways in left column.
+function draw_gateway_buttons()
+{
     var left_div = document.getElementById('left');
 
     //for (var i=0; i<gateway_data.length; i++)
@@ -172,40 +211,42 @@ function draw_gateway_data()
     {
         if (!gateway_data.hasOwnProperty(gtw_id)) continue;
 
-        console.log('gateway',gateway_data[gtw_id]);
-        var marker = L.marker([gateway_data[gtw_id].lat, gateway_data[gtw_id].lng], 
-                                {icon: icon,
-                                 pane: 'gateways'}).addTo(map);
-        marker.on('click', (function (gateway) {
-                                    return function (e) {
-                                        heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_data[gtw_id])
-        );
-
+        // Add button on left menu for this gateway
         var gw_div = document.createElement('div');
         gw_div.id = 'gateway_button_'+gtw_id;
         gw_div.className = 'gateway_button';
         gw_div.setAttribute('data-gtw_id',gtw_id);
         gw_div.addEventListener('click', function (evt) {
             document.getElementById('all_gateways_button').style['background-color'] = 'white';
+            // color gateway buttons white
+            deselect_gateways();
+            // remove all gateway markers on map
+            remove_gateway_markers();
+            // pick up gateway id for button clicked (stored as button element attribute)
             var gtw_id = evt.target.getAttribute('data-gtw_id');
-            if (gateway_data[gtw_id].selected)
-            {
-                evt.target.style['background-color'] = 'white';
-                gateway_data[gtw_id].selected = false;
-            }
-            else
-            {
-                evt.target.style['background-color'] = 'rgb(222, 249, 204)';
-                gateway_data[gtw_id].selected = true;
-                remove_data_panes();
-                add_data_panes();
-                draw_survey_data(survey_data, gtw_id);
-            }
+            // highlight this gateway button as 'selected'
+            evt.target.style['background-color'] = 'rgb(222, 249, 204)';
+            gateway_data[gtw_id].seleicted = true;
+            // draw & highlight this gateway on map
+            draw_gateway_marker(gateway_data[gtw_id],true);
+            gateway_markers.addTo(map);
+            // remove all data markers from map
+            remove_data_markers();
+            // redraw markers giving this gateway id as filter
+            draw_survey_data(survey_data, gtw_id);
         });
         var gw_txt = document.createTextNode(gtw_id);
         gw_div.appendChild(gw_txt);
         left_div.appendChild(gw_div);
     }
+
+}
+
+function draw_gateways()
+{
+    draw_gateway_markers();
+
+    draw_gateway_buttons();
 }
 
 // 'click' callback for 'All gateways' button
@@ -214,6 +255,19 @@ function all_gateways()
     // set 'all_gateways_button' to 'selected'.
     document.getElementById('all_gateways_button').style['background-color'] = 'rgb(222, 249, 204)';
 
+    deselect_gateways();
+
+    remove_gateway_markers();
+
+    draw_gateway_markers();
+
+    remove_data_markers();
+
+    draw_survey_data(survey_data);
+}
+
+function deselect_gateways()
+{
     for (var gtw_id in gateway_data)
     {
         gateway_data[gtw_id].selected = false;
@@ -224,6 +278,8 @@ function all_gateways()
 function draw_survey_data(survey_data, gateway_filter, ts_from, ts_to)
 {
     //console.log('draw_survey_data', 'survey_data.length',survey_data.length);
+
+    data_markers = L.layerGroup();
 
     for (var file=0; file < survey_data.length; file++)
     {
@@ -271,7 +327,7 @@ function draw_survey_data(survey_data, gateway_filter, ts_from, ts_to)
                 {
                     if (gateways[gw].gtw_id != gateway_filter) continue;
                     rssi = gateways[gw].rssi;
-                    console.log('data matched',gateway_filter, rssi);
+                    //console.log('data matched',gateway_filter, rssi);
                     break;
                 }
                 else
@@ -288,20 +344,24 @@ function draw_survey_data(survey_data, gateway_filter, ts_from, ts_to)
             var strength = rssi > -100 ? 'strong'  : (rssi > -105 ? 'medium' : 'weak');
             var color = strength == 'strong' ? 'green'  : (strength == 'medium' ? 'yellow' : 'red');
 
-            console.log('row',i,'has rssi:',rssi, color, gateways);
+            //console.log('row',i,'has rssi:',rssi, color, gateways);
             var circle = L.circleMarker([row_data.lat, row_data.lng], {
                     stroke: false,
                     fillColor: color,
                     fillOpacity: 0.5,
                     radius: 8,
                     pane: 'data-'+strength
-                }).addTo(map);
+            });
             circle.on('click', (function (row_string) {
                                     return function (e) {
                                         heading_info_el.innerHTML = row_string; };})(row_string)
             );
+
+            data_markers.addLayer(circle);
         }
-    }
+    } // end for loop iterating data files
+
+    data_markers.addTo(map);
 
 }
 
@@ -453,7 +513,7 @@ function test_button()
 <div style="display: grid; grid-template-columns: 1fr 6fr;">
   <div id="left">
       <h4>Gateways</h4>
-      <div id="test_button" class="gateway_button" onclick="test_button()">Test</div>
+      <!-- <div id="test_button" class="gateway_button" onclick="test_button()">Test</div> -->
       <div id="all_gateways_button" class="gateway_button" onclick="all_gateways()">All gateways</div>
       <hr/>
   </div>
