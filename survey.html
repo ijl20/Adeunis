@@ -10,6 +10,13 @@
 
     <script src="https://smartcambridge.org/static_web/js/geo.js"></script>
 
+    <!-- JQuery & JQuery-UI -->
+
+    <link href = "https://code.jquery.com/ui/1.10.4/themes/ui-lightness/jquery-ui.css" rel = "stylesheet">
+    <script src = "https://code.jquery.com/jquery-1.10.2.js"></script>
+    <script src = "https://code.jquery.com/ui/1.10.4/jquery-ui.js"></script>
+      
+    
     <script>
       var survey_data = new Array();
       var gateway_data = {};
@@ -18,7 +25,7 @@
     <!-- <script src="csn_survey/csn_data/test/0018b2000000113e/0018b2000000113e_2017-05-25.js"></script> -->
 
     <!-- <script src="adeunis_2019-04-16_jw35.js"></script> -->
-    <script src="survey_data.js"></script>
+    <! --<script src="survey_data.js"></script> -->
 
 <style>
 body {
@@ -30,14 +37,15 @@ body {
    display: inline-block;
 }
 
-#heading_info
+#data_info
 {
    display: inline-block;
    font-size: small;
+   height: 15vh;
 }
 
 #map {
-  height: 95vh;
+  height: 85vh;
 }
 
 .gateway_button {
@@ -47,6 +55,12 @@ body {
     cursor: pointer;
 }
 
+.date_input {
+    position: relative;
+    z-index: 1000;
+    width: 120px;
+}
+
 </style>
 
 <script>
@@ -54,7 +68,7 @@ body {
 // This script reads the Adeunis Field Test device LoraWAN data records and
 // parses the lat/long from the hex 'payload_raw' field.
 // Globals
-var heading_info_el;
+var data_info_el;
 var map;
 var data_markers; // layerGroup holds data markers placed on map (so can be removed)
 var gateway_markers; // layerGroup for gateway markers
@@ -65,7 +79,7 @@ function init()
 {
     //data_markers = new Array();
 
-    heading_info_el = document.getElementById('heading_info');
+    data_info_el = document.getElementById('data_info');
 
     var ts_from = get_qs('ts_from');
     var ts_to = get_qs('ts_to');
@@ -82,6 +96,10 @@ function init()
         ts_to = (new Date(date_to).getTime())/1000 + 24*60*60; // date_to timestamp is END of day
     }
     console.log('ts_from,to=',ts_from,ts_to);
+
+    //document.getElementById('date_from').datepicker();
+    //document.getElementById('date_to').datepicker();
+    $("#date_from").datepicker();
 
     init_map();
 
@@ -181,7 +199,7 @@ function draw_gateway_marker(gateway_record, selected)
     });
     marker.on('click', (function (gateway) {
                                 return function (e) {
-                                    heading_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_record)
+                                    data_info_el.innerHTML = JSON.stringify(gateway); };})(gateway_record)
     );
 
     gateway_markers.addLayer(marker);
@@ -354,7 +372,7 @@ function draw_survey_data(survey_data, gateway_filter, ts_from, ts_to)
             });
             circle.on('click', (function (row_string) {
                                     return function (e) {
-                                        heading_info_el.innerHTML = row_string; };})(row_string)
+                                        data_info_el.innerHTML = row_string; };})(row_string)
             );
 
             data_markers.addLayer(circle);
@@ -503,15 +521,50 @@ function test_button()
     map.getPane('data-weak').remove();
 }
 
+function got_survey_data()
+{
+    // read data as 'json object per line'
+   var data_txt = this.responseText;
+    //console.log(data_txt);
+    // convert string into a json array
+    var json_string = '['+data_txt.replace(/\n/g,',');
+    // fix trailing comma if data ends with \n
+    var last_char = json_string.slice(-1);
+    if (last_char == ',')
+    {
+        json_string = json_string.slice(0,json_string.length-1);
+    }
+        console.log('trimming "," in json_string', json_string.slice(3941700));
+    json_string += ']';
+    var got_data = JSON.parse(json_string);
+    console.log(got_data.length);
+    // append new data to page global data store
+    survey_data.push(got_data);
+    // clear existing data markers off map
+    remove_data_markers();
+    draw_survey_data(survey_data);
+}
+
+function get_survey_data(filter)
+{
+    var oReq = new XMLHttpRequest();
+    oReq.addEventListener("load", got_survey_data);
+    oReq.open("GET", "survey_data.txt");
+    oReq.send();
+}
+
 </script>
   </head>
 <body onload='init()'>
-  <div id="heading_block">
+<div id="heading_block">
     <div id='heading_text'>CSN Survey</div>
-    <div id='heading_info'>Click on any point to see data</div>
-  </div><!-- end heading_block -->
+</div><!-- end heading_block -->
 <div style="display: grid; grid-template-columns: 1fr 6fr;">
   <div id="left">
+      <div><a href="#" onclick="get_survey_data()">get_data</a></div>
+      <div><b>From:</b> <input id="date_from" class="date_input"></input></div>
+      <div><b>To:</b> <input id="date_to" class="date_input"></input></div>
+
       <h4>Gateways</h4>
       <!-- <div id="test_button" class="gateway_button" onclick="test_button()">Test</div> -->
       <div id="all_gateways_button" class="gateway_button" onclick="all_gateways()">All gateways</div>
@@ -519,5 +572,7 @@ function test_button()
   </div>
   <div id="map"></div>
 </div>
+<div id='data_info'>Click on any point to see data</div>
 </body>
 </html>
+
